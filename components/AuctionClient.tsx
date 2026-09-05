@@ -1,7 +1,17 @@
+
 "use client";
+
 import { useEffect, useState, useRef, useCallback } from "react";
 import Header from "./Header";
-import { Clock, Gavel, CheckCircle2, Eye, X } from "lucide-react";
+import {
+  Clock,
+  Gavel,
+  CheckCircle2,
+  Eye,
+  X,
+  Send,
+  MessageCircle,
+} from "lucide-react";
 
 type P = {
   id: string;
@@ -40,12 +50,18 @@ export default function AuctionClient({ name }: { name: string }) {
   // Initial load
   const loadInitial = useCallback(async () => {
     isFetchingRef.current = true;
+
     try {
-      const r = await fetch(`/api/public/products?page=1&limit=${PAGE_SIZE}`, {
-        cache: "no-store",
-      });
+      const r = await fetch(
+        `/api/public/products?page=1&limit=${PAGE_SIZE}`,
+        {
+          cache: "no-store",
+        }
+      );
+
       if (r.ok) {
         const data = await r.json();
+
         if (Array.isArray(data)) {
           setProducts(data);
           setHasMore(false);
@@ -65,27 +81,44 @@ export default function AuctionClient({ name }: { name: string }) {
   // Load next page on scroll
   const loadNextPage = useCallback(async () => {
     if (isFetchingRef.current || !hasMore) return;
+
     isFetchingRef.current = true;
     setLoadingMore(true);
 
     const nextPage = page + 1;
+
     try {
-      const r = await fetch(`/api/public/products?page=${nextPage}&limit=${PAGE_SIZE}`, {
-        cache: "no-store",
-      });
+      const r = await fetch(
+        `/api/public/products?page=${nextPage}&limit=${PAGE_SIZE}`,
+        {
+          cache: "no-store",
+        }
+      );
+
       if (r.ok) {
         const data = await r.json();
-        const newItems: P[] = Array.isArray(data) ? data : data.items || [];
-        const nextHasMore = Array.isArray(data) ? false : Boolean(data.hasMore);
+
+        const newItems: P[] = Array.isArray(data)
+          ? data
+          : data.items || [];
+
+        const nextHasMore = Array.isArray(data)
+          ? false
+          : Boolean(data.hasMore);
 
         setProducts((prev) => {
           const existingIds = new Set(prev.map((p) => p.id));
-          const filteredNew = newItems.filter((p) => !existingIds.has(p.id));
+
+          const filteredNew = newItems.filter(
+            (p) => !existingIds.has(p.id)
+          );
+
           return [...prev, ...filteredNew];
         });
 
         setPage(nextPage);
         setHasMore(nextHasMore);
+
         if (data.total !== undefined) {
           setTotalCount(data.total);
         }
@@ -96,18 +129,27 @@ export default function AuctionClient({ name }: { name: string }) {
     }
   }, [page, hasMore]);
 
-  // Silent refresh for live prices & bids without resetting scroll or items
+  // Silent refresh for live prices & bids
   const silentRefresh = useCallback(async () => {
     try {
-      const r = await fetch("/api/public/products", { cache: "no-store" });
+      const r = await fetch("/api/public/products", {
+        cache: "no-store",
+      });
+
       if (r.ok) {
         const freshList: P[] = await r.json();
+
         if (Array.isArray(freshList)) {
-          const freshMap = new Map(freshList.map((p) => [p.id, p]));
+          const freshMap = new Map(
+            freshList.map((p) => [p.id, p])
+          );
+
           setProducts((prev) =>
             prev.map((p) => {
               const fresh = freshMap.get(p.id);
+
               if (!fresh) return p;
+
               return {
                 ...p,
                 currentPrice: fresh.currentPrice,
@@ -116,6 +158,22 @@ export default function AuctionClient({ name }: { name: string }) {
               };
             })
           );
+
+          // تحديث المنتج المفتوح في النافذة أيضًا
+          setSelected((prev) => {
+            if (!prev) return prev;
+
+            const fresh = freshMap.get(prev.id);
+
+            if (!fresh) return prev;
+
+            return {
+              ...prev,
+              currentPrice: fresh.currentPrice,
+              active: fresh.active,
+              _count: fresh._count,
+            };
+          });
         }
       }
     } catch {
@@ -126,7 +184,11 @@ export default function AuctionClient({ name }: { name: string }) {
   // Setup initial load and timers
   useEffect(() => {
     loadInitial();
-    const clockTimer = setInterval(() => setNow(Date.now()), 1000);
+
+    const clockTimer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+
     const pollTimer = setInterval(silentRefresh, 6000);
 
     return () => {
@@ -139,21 +201,29 @@ export default function AuctionClient({ name }: { name: string }) {
   useEffect(() => {
     if (selected) {
       const prev = document.body.style.overflow;
+
       document.body.style.overflow = "hidden";
+
       return () => {
         document.body.style.overflow = prev;
       };
     }
   }, [selected]);
 
-  // IntersectionObserver for infinite scroll on sentinel
+  // IntersectionObserver for infinite scroll
   useEffect(() => {
     if (!sentinelRef.current) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
         const target = entries[0];
-        if (target.isIntersecting && hasMore && !isFetchingRef.current && !initialLoading) {
+
+        if (
+          target.isIntersecting &&
+          hasMore &&
+          !isFetchingRef.current &&
+          !initialLoading
+        ) {
           loadNextPage();
         }
       },
@@ -165,119 +235,220 @@ export default function AuctionClient({ name }: { name: string }) {
     );
 
     observer.observe(sentinelRef.current);
+
     return () => observer.disconnect();
   }, [hasMore, initialLoading, loadNextPage]);
 
   async function bid(id: string) {
     const r = await fetch("/api/public/bid", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId: id }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        productId: id,
+      }),
     });
+
     const d = await r.json();
+
     if (!r.ok) {
       alert(d.error || "تعذر تنفيذ المزايدة");
       return;
     }
+
     // Instant local state update
     setProducts((prev) =>
       prev.map((p) => {
         if (p.id === id) {
           return {
             ...p,
-            currentPrice: p.currentPrice + p.bidIncrement,
-            _count: { bids: (p._count?.bids || 0) + 1 },
+            currentPrice:
+              p.currentPrice + p.bidIncrement,
+            _count: {
+              bids: (p._count?.bids || 0) + 1,
+            },
           };
         }
+
         return p;
       })
     );
+
+    // Update modal too
+    setSelected((prev) => {
+      if (!prev || prev.id !== id) return prev;
+
+      return {
+        ...prev,
+        currentPrice:
+          prev.currentPrice + prev.bidIncrement,
+        _count: {
+          bids: (prev._count?.bids || 0) + 1,
+        },
+      };
+    });
+
     silentRefresh();
   }
 
   return (
     <>
       <Header name={name} />
+
       <main className="container">
         <section className="hero">
           <div>
             <small>هلا {name} 👋</small>
+
             <h1>مزادات حقيقية</h1>
-            <p>كل المنتجات في قسم واحد — الفرصة بين إيديك</p>
+
+            <p>
+              كل المنتجات في قسم واحد — الفرصة بين إيديك
+            </p>
           </div>
         </section>
 
         <div className="sectionHead">
-          <h2>المزادات الحالية {totalCount !== null ? `(${totalCount})` : ""}</h2>
+          <h2>
+            المزادات الحالية{" "}
+            {totalCount !== null ? `(${totalCount})` : ""}
+          </h2>
+
           <span className="live">● مباشر</span>
         </div>
 
         <section className="grid">
           {products.map((p) => {
-            const diff = Math.max(0, new Date(p.endsAt).getTime() - now);
+            const diff = Math.max(
+              0,
+              new Date(p.endsAt).getTime() - now
+            );
+
             const ended = diff <= 0 || !p.active;
+
             const h = Math.floor(diff / 3600000)
               .toString()
               .padStart(2, "0");
-            const m = Math.floor((diff % 3600000) / 60000)
+
+            const m = Math.floor(
+              (diff % 3600000) / 60000
+            )
               .toString()
               .padStart(2, "0");
-            const s = Math.floor((diff % 60000) / 1000)
+
+            const s = Math.floor(
+              (diff % 60000) / 1000
+            )
               .toString()
               .padStart(2, "0");
 
             return (
               <article className="card" key={p.id}>
-                <div className="image" onClick={() => setSelected(p)} style={{ cursor: "pointer" }}>
+                <div
+                  className="image"
+                  onClick={() => setSelected(p)}
+                  style={{ cursor: "pointer" }}
+                >
                   <img
                     src={p.imageUrl}
                     alt={p.name}
                     loading="lazy"
-                    className={p.blurImage && !revealed.has(p.id) ? "blurredImage" : ""}
+                    className={
+                      p.blurImage &&
+                        !revealed.has(p.id)
+                        ? "blurredImage"
+                        : ""
+                    }
                   />
-                  {p.blurImage && !revealed.has(p.id) && (
-                    <button
-                      type="button"
-                      className="revealImageBtn"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setRevealed((prev) => new Set(prev).add(p.id));
-                      }}
-                    >
-                      <Eye size={16} />
-                      عرض الصورة
-                    </button>
-                  )}
+
+                  {p.blurImage &&
+                    !revealed.has(p.id) && (
+                      <button
+                        type="button"
+                        className="revealImageBtn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+
+                          setRevealed((prev) => {
+                            const next = new Set(prev);
+                            next.add(p.id);
+                            return next;
+                          });
+                        }}
+                      >
+                        <Eye size={16} />
+
+                        عرض الصورة
+                      </button>
+                    )}
+
                   <span className="timer">
                     <Clock size={16} />
-                    {ended ? "انتهى المزاد" : `${h}:${m}:${s}`}
+
+                    {ended
+                      ? "انتهى المزاد"
+                      : `${h}:${m}:${s}`}
                   </span>
+
                   <span className="detailsBtn">
                     التفاصيل
                   </span>
                 </div>
 
                 <div className="body">
-                  <h2 onClick={() => setSelected(p)} style={{ cursor: "pointer" }}>{p.name}</h2>
+                  <h2
+                    onClick={() => setSelected(p)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    {p.name}
+                  </h2>
+
                   <p>
-                    السعر الافتتاحي <b>{money(p.openingPrice)}</b>
+                    السعر الافتتاحي
+
+                    <b>
+                      {money(p.openingPrice)}
+                    </b>
                   </p>
+
                   <p className="current">
-                    أعلى سعر حالياً <b>{money(p.currentPrice)}</b>
+                    أعلى سعر حالياً
+
+                    <b>
+                      {money(p.currentPrice)}
+                    </b>
                   </p>
+
                   {p.reservePrice != null && (
-                    <p className={`reserve ${p.reserveMet ? "met" : "unmet"}`}>
-                      أقل سعر للبيع <b>{money(p.reservePrice)}</b>
+                    <p
+                      className={`reserve ${p.reserveMet ? "met" : "unmet"
+                        }`}
+                    >
+                      أقل سعر للبيع
+
+                      <b>
+                        {money(p.reservePrice)}
+                      </b>
                     </p>
                   )}
-                  <small>عدد المزايدات: {p._count.bids}</small>
+
+                  <small>
+                    عدد المزايدات: {p._count.bids}
+                  </small>
+
                   <button
                     disabled={ended}
                     className="goldBtn"
                     onClick={() => bid(p.id)}
                   >
-                    <Gavel size={18} />{" "}
-                    {ended ? "المزاد منتهي" : `زايد ${money(p.bidIncrement)}`}
+                    <Gavel size={18} />
+
+                    {ended
+                      ? "المزاد منتهي"
+                      : `زايد ${money(
+                        p.bidIncrement
+                      )}`}
                   </button>
                 </div>
               </article>
@@ -286,33 +457,85 @@ export default function AuctionClient({ name }: { name: string }) {
         </section>
 
         {/* Scroll Sentinel */}
-        <div ref={sentinelRef} className="scrollSentinel" />
+        <div
+          ref={sentinelRef}
+          className="scrollSentinel"
+        />
 
-        {/* Loading indicator when scrolling */}
+        {/* Loading indicator */}
         {loadingMore && (
           <div className="scrollLoadingWrap">
             <span className="scrollSpinner" />
-            <span>جاري تحميل المزيد من المزادات...</span>
+
+            <span>
+              جاري تحميل المزيد من المزادات...
+            </span>
           </div>
         )}
 
-        {/* End of list banner */}
-        {!hasMore && products.length > 0 && !initialLoading && (
-          <div className="scrollEndWrap">
-            <CheckCircle2 size={18} />
-            <span>تم عرض جميع المزادات المتاحة حالياً ({products.length})</span>
-          </div>
-        )}
+        {/* End of list */}
+        {!hasMore &&
+          products.length > 0 &&
+          !initialLoading && (
+            <div className="scrollEndWrap">
+              <CheckCircle2 size={18} />
+
+              <span>
+                تم عرض جميع المزادات المتاحة حالياً (
+                {products.length})
+              </span>
+            </div>
+          )}
       </main>
 
-      {selected && <ProductDetailsModal
-        p={selected}
-        now={now}
-        revealed={revealed}
-        onReveal={(id) => setRevealed((prev) => new Set(prev).add(id))}
-        onBid={bid}
-        onClose={() => setSelected(null)}
-      />}
+      {/* Product Details Modal */}
+      {selected && (
+        <ProductDetailsModal
+          p={selected}
+          now={now}
+          revealed={revealed}
+          onReveal={(id) =>
+            setRevealed((prev) => {
+              const next = new Set(prev);
+              next.add(id);
+              return next;
+            })
+          }
+          onBid={bid}
+          onClose={() => setSelected(null)}
+        />
+      )}
+
+      {/* Floating Social Buttons */}
+      <div className="socialFab">
+        <a
+          href="https://t.me/+RN2FXdUwTuE3OWYy"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fabItem telegram"
+          aria-label="Telegram"
+        >
+          <Send size={22} />
+
+          <span className="fabTooltip">
+            تواصل معنا عبر Telegram
+          </span>
+        </a>
+
+        <a
+          href="https://wa.me/9647871151018"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="fabItem whatsapp"
+          aria-label="WhatsApp"
+        >
+          <MessageCircle size={23} />
+
+          <span className="fabTooltip">
+            تواصل معنا عبر WhatsApp
+          </span>
+        </a>
+      </div>
     </>
   );
 }
@@ -332,11 +555,28 @@ function ProductDetailsModal({
   onBid: (id: string) => void;
   onClose: () => void;
 }) {
-  const diff = Math.max(0, new Date(p.endsAt).getTime() - now);
+  const diff = Math.max(
+    0,
+    new Date(p.endsAt).getTime() - now
+  );
+
   const ended = diff <= 0 || !p.active;
-  const h = Math.floor(diff / 3600000).toString().padStart(2, "0");
-  const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, "0");
-  const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, "0");
+
+  const h = Math.floor(diff / 3600000)
+    .toString()
+    .padStart(2, "0");
+
+  const m = Math.floor(
+    (diff % 3600000) / 60000
+  )
+    .toString()
+    .padStart(2, "0");
+
+  const s = Math.floor(
+    (diff % 60000) / 1000
+  )
+    .toString()
+    .padStart(2, "0");
 
   const fmt = (v: string) =>
     new Intl.DateTimeFormat("ar-IQ", {
@@ -347,21 +587,41 @@ function ProductDetailsModal({
       minute: "2-digit",
     }).format(new Date(v));
 
-  const isBlurred = p.blurImage && !revealed.has(p.id);
+  const isBlurred =
+    p.blurImage && !revealed.has(p.id);
 
   return (
-    <div className="productModal" onClick={onClose}>
-      <div className="productModalBox" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="productModal"
+      onClick={onClose}
+    >
+      <div
+        className="productModalBox"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="productModalBar">
           <div className="productModalBarInfo">
-            <span className={`productModalState ${ended ? "ended" : "live"}`}>
-              {ended ? "انتهى المزاد" : "مزاد مباشر"}
+            <span
+              className={`productModalState ${ended ? "ended" : "live"
+                }`}
+            >
+              {ended
+                ? "انتهى المزاد"
+                : "مزاد مباشر"}
             </span>
-            <span className={`productModalTimer ${ended ? "ended" : ""}`}>
+
+            <span
+              className={`productModalTimer ${ended ? "ended" : ""
+                }`}
+            >
               <Clock size={15} />
-              {ended ? "—" : `${h}:${m}:${s}`}
+
+              {ended
+                ? "—"
+                : `${h}:${m}:${s}`}
             </span>
           </div>
+
           <button
             type="button"
             className="productModalClose"
@@ -373,80 +633,145 @@ function ProductDetailsModal({
         </div>
 
         <div className="productModalScroll">
+          <div className="productModalImageWrap">
+            <img
+              src={p.imageUrl}
+              alt={p.name}
+              className={
+                isBlurred
+                  ? "blurredImage"
+                  : ""
+              }
+            />
 
-        <div className="productModalImageWrap">
-          <img
-            src={p.imageUrl}
-            alt={p.name}
-            className={isBlurred ? "blurredImage" : ""}
-          />
-          {isBlurred && (
+            {isBlurred && (
+              <button
+                type="button"
+                className="revealImageBtn"
+                onClick={() =>
+                  onReveal(p.id)
+                }
+              >
+                <Eye size={16} />
+
+                عرض الصورة
+              </button>
+            )}
+          </div>
+
+          <div className="productModalBody">
+            <h2>{p.name}</h2>
+
+            {p.description ? (
+              <p className="productModalDesc">
+                {p.description}
+              </p>
+            ) : null}
+
+            <div className="productModalStats">
+              <div>
+                <span>
+                  أعلى سعر حالياً
+                </span>
+
+                <b className="current">
+                  {money(p.currentPrice)}
+                </b>
+              </div>
+
+              <div>
+                <span>
+                  السعر الافتتاحي
+                </span>
+
+                <b>
+                  {money(p.openingPrice)}
+                </b>
+              </div>
+
+              <div>
+                <span>
+                  خطوة المزايدة
+                </span>
+
+                <b>
+                  {money(p.bidIncrement)}
+                </b>
+              </div>
+
+              <div>
+                <span>
+                  عدد المزايدات
+                </span>
+
+                <b>
+                  {p._count.bids}
+                </b>
+              </div>
+            </div>
+
+            {p.reservePrice != null && (
+              <div
+                className={`productModalReserve ${p.reserveMet
+                    ? "met"
+                    : "unmet"
+                  }`}
+              >
+                <span>
+                  أقل سعر للبيع (الاحتياطي)
+                </span>
+
+                <b>
+                  {money(p.reservePrice)}
+                </b>
+
+                <small>
+                  {p.reserveMet
+                    ? "✔ تم بلوغ السعر"
+                    : "لم يتم بلوغ السعر بعد"}
+                </small>
+              </div>
+            )}
+
+            <div className="productModalDates">
+              <div>
+                <small>
+                  بداية المزاد
+                </small>
+
+                <span>
+                  {fmt(p.startsAt)}
+                </span>
+              </div>
+
+              <div>
+                <small>
+                  نهاية المزاد
+                </small>
+
+                <span>
+                  {fmt(p.endsAt)}
+                </span>
+              </div>
+            </div>
+
             <button
-              type="button"
-              className="revealImageBtn"
-              onClick={() => onReveal(p.id)}
+              className="goldBtn"
+              disabled={ended}
+              onClick={() => onBid(p.id)}
             >
-              <Eye size={16} />
-              عرض الصورة
+              <Gavel size={18} />
+
+              {ended
+                ? "المزاد منتهي"
+                : `زايد الآن ${money(
+                  p.bidIncrement
+                )}`}
             </button>
-          )}
-        </div>
-
-        <div className="productModalBody">
-          <h2>{p.name}</h2>
-          {p.description ? (
-            <p className="productModalDesc">{p.description}</p>
-          ) : null}
-
-          <div className="productModalStats">
-            <div>
-              <span>أعلى سعر حالياً</span>
-              <b className="current">{money(p.currentPrice)}</b>
-            </div>
-            <div>
-              <span>السعر الافتتاحي</span>
-              <b>{money(p.openingPrice)}</b>
-            </div>
-            <div>
-              <span>خطوة المزايدة</span>
-              <b>{money(p.bidIncrement)}</b>
-            </div>
-            <div>
-              <span>عدد المزايدات</span>
-              <b>{p._count.bids}</b>
-            </div>
           </div>
-
-          {p.reservePrice != null && (
-            <div className={`productModalReserve ${p.reserveMet ? "met" : "unmet"}`}>
-              <span>أقل سعر للبيع (الاحتياطي)</span>
-              <b>{money(p.reservePrice)}</b>
-              <small>{p.reserveMet ? "✔ تم بلوغ السعر" : "لم يتم بلوغ السعر بعد"}</small>
-            </div>
-          )}
-
-          <div className="productModalDates">
-            <div>
-              <small>بداية المزاد</small>
-              <span>{fmt(p.startsAt)}</span>
-            </div>
-            <div>
-              <small>نهاية المزاد</small>
-              <span>{fmt(p.endsAt)}</span>
-            </div>
-          </div>
-
-          <button
-            className="goldBtn"
-            disabled={ended}
-            onClick={() => onBid(p.id)}
-          >
-            <Gavel size={18} />{" "}
-            {ended ? "المزاد منتهي" : `زايد الآن ${money(p.bidIncrement)}`}
-          </button>
-        </div>
         </div>
       </div>
     </div>
   );
 }
+
