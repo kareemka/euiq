@@ -1,0 +1,85 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AdminRole {
+  ADMIN
+  SUPERADMIN
+}
+
+model Admin {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(ADMIN)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  sessions     AdminSession[]
+}
+
+model AdminSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  adminId   String
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  @@index([adminId])
+  @@index([expiresAt])
+}
+
+model AuctionUser {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String   @unique
+  createdAt DateTime @default(now())
+  sessions  UserSession[]
+  bids      Bid[]
+}
+
+model UserSession {
+  id        String      @id @default(cuid())
+  tokenHash String      @unique
+  userId    String
+  user      AuctionUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime    @default(now())
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?
+  imageUrl     String
+  openingPrice Int
+  reservePrice Int?
+  currentPrice Int
+  bidIncrement Int
+  startsAt     DateTime
+  endsAt       DateTime
+  active       Boolean  @default(true)
+  blurImage    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  bids         Bid[]
+  @@index([active, endsAt])
+}
+
+model Bid {
+  id        String      @id @default(cuid())
+  amount    Int
+  productId String
+  userId    String
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user      AuctionUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  @@index([productId, createdAt])
+  @@index([userId])
+}
