@@ -1,27 +1,30 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { assertSameOrigin, getAdmin } from "@/lib/security";
-import { z } from "zod";
+import { productUpdateSchema } from "@/lib/validation";
+import type { Prisma } from "@prisma/client";
 
-const patchSchema = z.object({
-  active: z.boolean().optional(),
-  endsAt: z.string().datetime().optional(),
-  reservePrice: z.number().int().positive().optional().nullable(),
-  blurImage: z.boolean().optional()
-});
+type Data = Prisma.ProductUpdateInput;
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     await assertSameOrigin(request);
     if (!await getAdmin()) return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
-    const parsed = patchSchema.safeParse(await request.json());
+    const parsed = productUpdateSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json({ error: "بيانات غير صحيحة" }, { status: 400 });
     const { id } = await ctx.params;
-    const data: { active?: boolean; endsAt?: Date; reservePrice?: number | null; blurImage?: boolean } = {};
-    if (parsed.data.active !== undefined) data.active = parsed.data.active;
-    if (parsed.data.endsAt) data.endsAt = new Date(parsed.data.endsAt);
-    if (parsed.data.reservePrice !== undefined) data.reservePrice = parsed.data.reservePrice;
-    if (parsed.data.blurImage !== undefined) data.blurImage = parsed.data.blurImage;
+    const d = parsed.data;
+    const data: Data = {};
+    if (d.name !== undefined) data.name = d.name;
+    if (d.description !== undefined) data.description = d.description;
+    if (d.imageUrl !== undefined) data.imageUrl = d.imageUrl;
+    if (d.openingPrice !== undefined) data.openingPrice = d.openingPrice;
+    if (d.reservePrice !== undefined) data.reservePrice = d.reservePrice;
+    if (d.bidIncrement !== undefined) data.bidIncrement = d.bidIncrement;
+    if (d.startsAt) data.startsAt = new Date(d.startsAt);
+    if (d.endsAt) data.endsAt = new Date(d.endsAt);
+    if (d.active !== undefined) data.active = d.active;
+    if (d.blurImage !== undefined) data.blurImage = d.blurImage;
     const p = await db.product.update({ where: { id }, data });
     return NextResponse.json(p);
   } catch { return NextResponse.json({ error: "تعذر التعديل" }, { status: 400 }); }

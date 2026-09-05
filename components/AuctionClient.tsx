@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import Header from "./Header";
-import { Clock, Gavel, CheckCircle2, Eye } from "lucide-react";
+import { Clock, Gavel, CheckCircle2, Eye, X } from "lucide-react";
 
 type P = {
   id: string;
   name: string;
+  description: string | null;
   imageUrl: string;
   openingPrice: number;
   reservePrice: number | null;
@@ -31,6 +32,7 @@ export default function AuctionClient({ name }: { name: string }) {
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<P | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement>(null);
   const isFetchingRef = useRef(false);
@@ -133,6 +135,17 @@ export default function AuctionClient({ name }: { name: string }) {
     };
   }, [loadInitial, silentRefresh]);
 
+  // Lock body scroll while popup is open
+  useEffect(() => {
+    if (selected) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [selected]);
+
   // IntersectionObserver for infinite scroll on sentinel
   useEffect(() => {
     if (!sentinelRef.current) return;
@@ -184,7 +197,7 @@ export default function AuctionClient({ name }: { name: string }) {
 
   return (
     <>
-      <Header />
+      <Header name={name} />
       <main className="container">
         <section className="hero">
           <div>
@@ -215,7 +228,7 @@ export default function AuctionClient({ name }: { name: string }) {
 
             return (
               <article className="card" key={p.id}>
-                <div className="image">
+                <div className="image" onClick={() => setSelected(p)} style={{ cursor: "pointer" }}>
                   <img
                     src={p.imageUrl}
                     alt={p.name}
@@ -226,9 +239,10 @@ export default function AuctionClient({ name }: { name: string }) {
                     <button
                       type="button"
                       className="revealImageBtn"
-                      onClick={() =>
-                        setRevealed((prev) => new Set(prev).add(p.id))
-                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setRevealed((prev) => new Set(prev).add(p.id));
+                      }}
                     >
                       <Eye size={16} />
                       عرض الصورة
@@ -238,10 +252,13 @@ export default function AuctionClient({ name }: { name: string }) {
                     <Clock size={16} />
                     {ended ? "انتهى المزاد" : `${h}:${m}:${s}`}
                   </span>
+                  <span className="detailsBtn">
+                    التفاصيل
+                  </span>
                 </div>
 
                 <div className="body">
-                  <h2>{p.name}</h2>
+                  <h2 onClick={() => setSelected(p)} style={{ cursor: "pointer" }}>{p.name}</h2>
                   <p>
                     السعر الافتتاحي <b>{money(p.openingPrice)}</b>
                   </p>
@@ -287,6 +304,149 @@ export default function AuctionClient({ name }: { name: string }) {
           </div>
         )}
       </main>
+
+      {selected && <ProductDetailsModal
+        p={selected}
+        now={now}
+        revealed={revealed}
+        onReveal={(id) => setRevealed((prev) => new Set(prev).add(id))}
+        onBid={bid}
+        onClose={() => setSelected(null)}
+      />}
     </>
+  );
+}
+
+function ProductDetailsModal({
+  p,
+  now,
+  revealed,
+  onReveal,
+  onBid,
+  onClose,
+}: {
+  p: P;
+  now: number;
+  revealed: Set<string>;
+  onReveal: (id: string) => void;
+  onBid: (id: string) => void;
+  onClose: () => void;
+}) {
+  const diff = Math.max(0, new Date(p.endsAt).getTime() - now);
+  const ended = diff <= 0 || !p.active;
+  const h = Math.floor(diff / 3600000).toString().padStart(2, "0");
+  const m = Math.floor((diff % 3600000) / 60000).toString().padStart(2, "0");
+  const s = Math.floor((diff % 60000) / 1000).toString().padStart(2, "0");
+
+  const fmt = (v: string) =>
+    new Intl.DateTimeFormat("ar-IQ", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(v));
+
+  const isBlurred = p.blurImage && !revealed.has(p.id);
+
+  return (
+    <div className="productModal" onClick={onClose}>
+      <div className="productModalBox" onClick={(e) => e.stopPropagation()}>
+        <div className="productModalBar">
+          <div className="productModalBarInfo">
+            <span className={`productModalState ${ended ? "ended" : "live"}`}>
+              {ended ? "انتهى المزاد" : "مزاد مباشر"}
+            </span>
+            <span className={`productModalTimer ${ended ? "ended" : ""}`}>
+              <Clock size={15} />
+              {ended ? "—" : `${h}:${m}:${s}`}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="productModalClose"
+            onClick={onClose}
+            aria-label="إغلاق"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="productModalScroll">
+
+        <div className="productModalImageWrap">
+          <img
+            src={p.imageUrl}
+            alt={p.name}
+            className={isBlurred ? "blurredImage" : ""}
+          />
+          {isBlurred && (
+            <button
+              type="button"
+              className="revealImageBtn"
+              onClick={() => onReveal(p.id)}
+            >
+              <Eye size={16} />
+              عرض الصورة
+            </button>
+          )}
+        </div>
+
+        <div className="productModalBody">
+          <h2>{p.name}</h2>
+          {p.description ? (
+            <p className="productModalDesc">{p.description}</p>
+          ) : null}
+
+          <div className="productModalStats">
+            <div>
+              <span>أعلى سعر حالياً</span>
+              <b className="current">{money(p.currentPrice)}</b>
+            </div>
+            <div>
+              <span>السعر الافتتاحي</span>
+              <b>{money(p.openingPrice)}</b>
+            </div>
+            <div>
+              <span>خطوة المزايدة</span>
+              <b>{money(p.bidIncrement)}</b>
+            </div>
+            <div>
+              <span>عدد المزايدات</span>
+              <b>{p._count.bids}</b>
+            </div>
+          </div>
+
+          {p.reservePrice != null && (
+            <div className={`productModalReserve ${p.reserveMet ? "met" : "unmet"}`}>
+              <span>أقل سعر للبيع (الاحتياطي)</span>
+              <b>{money(p.reservePrice)}</b>
+              <small>{p.reserveMet ? "✔ تم بلوغ السعر" : "لم يتم بلوغ السعر بعد"}</small>
+            </div>
+          )}
+
+          <div className="productModalDates">
+            <div>
+              <small>بداية المزاد</small>
+              <span>{fmt(p.startsAt)}</span>
+            </div>
+            <div>
+              <small>نهاية المزاد</small>
+              <span>{fmt(p.endsAt)}</span>
+            </div>
+          </div>
+
+          <button
+            className="goldBtn"
+            disabled={ended}
+            onClick={() => onBid(p.id)}
+          >
+            <Gavel size={18} />{" "}
+            {ended ? "المزاد منتهي" : `زايد الآن ${money(p.bidIncrement)}`}
+          </button>
+        </div>
+        </div>
+      </div>
+    </div>
   );
 }

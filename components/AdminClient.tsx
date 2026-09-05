@@ -28,7 +28,8 @@ import {
   Coins,
   Flame,
   Eye,
-  EyeOff
+  EyeOff,
+  Pencil
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import "./admin.css";
@@ -456,6 +457,16 @@ export default function AdminClient({ email }: { email: string }) {
                         <div className="tableActionButtons">
                           <button
                             type="button"
+                            className="actionEditBtn"
+                            onClick={() => router.push(`/admin/products/${p.id}/edit`)}
+                            title="تعديل بيانات المنتج"
+                          >
+                            <Pencil size={15} />
+                            تعديل
+                          </button>
+
+                          <button
+                            type="button"
                             className={`actionToggleBtn ${p.active ? "toPause" : "toActivate"}`}
                             onClick={() => toggle(p)}
                           >
@@ -542,6 +553,16 @@ export default function AdminClient({ email }: { email: string }) {
                     </button>
 
                     <div className="mobileCardSubActions">
+                      <button
+                        type="button"
+                        className="mobileEditBtn"
+                        onClick={() => router.push(`/admin/products/${p.id}/edit`)}
+                        title="تعديل بيانات المنتج"
+                      >
+                        <Pencil size={15} />
+                        تعديل
+                      </button>
+
                       <button
                         type="button"
                         className={`mobileActionBtn ${p.active ? "actionToggleBtn toPause" : "actionToggleBtn toActivate"}`}
